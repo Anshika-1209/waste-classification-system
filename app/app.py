@@ -580,7 +580,7 @@ if uploaded_file is not None:
 
         with st.container(border=True):
 
-            st.subheader("🔵 Color Indicator")
+            st.subheader(f"{bin_info.split(' ')[0]} Color Indicator")
 
             st.write(
                 "Recommended waste-bin indicator "
