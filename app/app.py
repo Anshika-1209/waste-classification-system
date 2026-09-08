@@ -45,7 +45,7 @@ CLASS_NAMES = [
 
 WASTE_INFO = {
     "cardboard": {
-        "bin": "🔵 Blue",
+        "bin": "🟤 Brown",
         "method": "Flatten cardboard and send it for paper/cardboard recycling.",
         "score": 85
     },
@@ -55,7 +55,7 @@ WASTE_INFO = {
         "score": 90
     },
     "metal": {
-        "bin": "🔵 Blue",
+        "bin": "⚙️ Grey",
         "method": "Separate metal items and send them to a metal recycling facility.",
         "score": 95
     },
@@ -65,12 +65,12 @@ WASTE_INFO = {
         "score": 85
     },
     "plastic": {
-        "bin": "🔵 Blue",
+        "bin": "🟡 Yellow",
         "method": "Separate clean plastic and send it to a suitable recycling facility.",
         "score": 80
     },
     "trash": {
-        "bin": "⚫ General Waste",
+        "bin": "⚫ Black",
         "method": "Dispose of non-recyclable waste through the appropriate general-waste system.",
         "score": 20
     }
