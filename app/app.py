@@ -1,4 +1,5 @@
 import streamlit as st
+from features import get_waste_features
 
 
 # ============================================================
@@ -429,7 +430,13 @@ if uploaded_file is not None:
             # TEMPORARY DEMO VALUES
             predicted_class = "Plastic"
             confidence = 94
-            recyclability = 80
+
+           # Get features based on predicted waste category
+            features = get_waste_features(predicted_class)
+
+            color = features["color"]
+            suggestion = features["suggestion"]
+            recyclability = features["score"]
 
             st.markdown(
                 f"## ♻️ {predicted_class}"
@@ -486,10 +493,11 @@ if uploaded_file is not None:
                 "Recommended waste-bin indicator "
                 "for the predicted category."
             )
-
             st.info(
-                "🔵 Recommended Bin: Blue"
+            f"🗑️ Recommended Bin: {color}"
             )
+
+           
 
 
     with f2:
@@ -504,8 +512,7 @@ if uploaded_file is not None:
             )
 
             st.success(
-                "Separate clean plastic and send "
-                "it to a suitable recycling facility."
+              f"♻️ {suggestion}"
             )
 
 
