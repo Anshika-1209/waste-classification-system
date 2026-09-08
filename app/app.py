@@ -1,4 +1,5 @@
 import streamlit as st
+from features import get_waste_features
 import tensorflow as tf
 import numpy as np
 import os
@@ -525,6 +526,17 @@ if uploaded_file is not None:
 
             st.subheader("🎯 Classification Result")
 
+            # TEMPORARY DEMO VALUES
+            predicted_class = "Plastic"
+            confidence = 94
+
+           # Get features based on predicted waste category
+            features = get_waste_features(predicted_class)
+
+            color = features["color"]
+            suggestion = features["suggestion"]
+            recyclability = features["score"]
+
             st.markdown(
                 f"## ♻️ {predicted_class.title()}"
             )
@@ -586,10 +598,12 @@ if uploaded_file is not None:
                 "Recommended waste-bin indicator "
                 "for the predicted category."
             )
-
             st.info(
+            f"🗑️ Recommended Bin: {color}"
                 f"Recommended Bin: {bin_info}"
             )
+
+           
 
 
     # --------------------------------------------------------
@@ -608,6 +622,7 @@ if uploaded_file is not None:
             )
 
             st.success(
+              f"♻️ {suggestion}"
                 recycling_method
             )
 
