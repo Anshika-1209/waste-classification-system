@@ -1,5 +1,9 @@
 import streamlit as st
 from features import get_waste_features
+import tensorflow as tf
+import numpy as np
+import os
+from PIL import Image
 
 
 # ============================================================
@@ -15,9 +19,67 @@ st.set_page_config(
 
 
 # ============================================================
+# AI MODEL
+# ============================================================
+
+MODEL_PATH = os.path.join(
+    os.path.dirname(__file__),
+    "..",
+    "waste_classifier_v2.keras"
+)
+
+model = tf.keras.models.load_model(MODEL_PATH)
+
+CLASS_NAMES = [
+    "cardboard",
+    "glass",
+    "metal",
+    "paper",
+    "plastic",
+    "trash"
+]
+
+
+# ============================================================
+# WASTE INFORMATION
+# ============================================================
+
+WASTE_INFO = {
+    "cardboard": {
+        "bin": "🟤 Brown",
+        "method": "Flatten cardboard and send it for paper/cardboard recycling.",
+        "score": 85
+    },
+    "glass": {
+        "bin": "🟢 Green",
+        "method": "Separate glass carefully and send it to a suitable glass recycling facility.",
+        "score": 90
+    },
+    "metal": {
+        "bin": "⚙️ Grey",
+        "method": "Separate metal items and send them to a metal recycling facility.",
+        "score": 95
+    },
+    "paper": {
+        "bin": "🔵 Blue",
+        "method": "Keep paper clean and dry and send it for paper recycling.",
+        "score": 85
+    },
+    "plastic": {
+        "bin": "🟡 Yellow",
+        "method": "Separate clean plastic and send it to a suitable recycling facility.",
+        "score": 80
+    },
+    "trash": {
+        "bin": "⚫ Black",
+        "method": "Dispose of non-recyclable waste through the appropriate general-waste system.",
+        "score": 20
+    }
+}
+
+
+# ============================================================
 # CUSTOM CSS
-# CSS ONLY — NO HTML UI COMPONENTS
-# NEW THEME: Deep indigo / cyan "night-tech" look
 # ============================================================
 
 st.markdown("""
@@ -337,7 +399,7 @@ with c4:
 
 
 # ============================================================
-# UPLOAD — now centered on the page
+# UPLOAD
 # ============================================================
 
 st.markdown(
@@ -364,7 +426,9 @@ with upload_col:
         )
 
 
-# Tips now sit below the centered uploader, as a row of cards
+# ============================================================
+# TIPS
+# ============================================================
 
 tip_cols = st.columns(5)
 
@@ -377,8 +441,11 @@ tips = [
 ]
 
 for col, (number, text) in zip(tip_cols, tips):
+
     with col:
+
         with st.container(border=True):
+
             st.markdown(f"**{number}**")
             st.caption(text)
 
@@ -413,8 +480,40 @@ if uploaded_file is not None:
             st.image(
                 uploaded_file,
                 caption="Uploaded Waste",
-                use_container_width=True
+                width="stretch"
             )
+
+
+    # --------------------------------------------------------
+    # REAL AI PREDICTION
+    # --------------------------------------------------------
+
+    image = Image.open(uploaded_file).convert("RGB")
+    image = image.resize((224, 224))
+
+    img_array = np.array(image)
+    img_array = np.expand_dims(img_array, axis=0)
+
+    predictions = model.predict(
+        img_array,
+        verbose=0
+    )
+
+    predicted_index = np.argmax(predictions[0])
+
+    predicted_class = CLASS_NAMES[predicted_index]
+
+    confidence = float(
+        predictions[0][predicted_index]
+    ) * 100
+
+    waste_info = WASTE_INFO[predicted_class]
+
+    recyclability = waste_info["score"]
+
+    bin_info = waste_info["bin"]
+
+    recycling_method = waste_info["method"]
 
 
     # --------------------------------------------------------
@@ -439,7 +538,7 @@ if uploaded_file is not None:
             recyclability = features["score"]
 
             st.markdown(
-                f"## ♻️ {predicted_class}"
+                f"## ♻️ {predicted_class.title()}"
             )
 
             st.caption("Predicted Waste Category")
@@ -451,7 +550,7 @@ if uploaded_file is not None:
             )
 
             st.caption(
-                f"{confidence}% confidence"
+                f"{confidence:.2f}% confidence"
             )
 
             st.divider()
@@ -459,15 +558,17 @@ if uploaded_file is not None:
             r1, r2 = st.columns(2)
 
             with r1:
+
                 st.metric(
                     "♻️ Recyclability",
                     f"{recyclability}%"
                 )
 
             with r2:
+
                 st.metric(
                     "🗂️ Category",
-                    predicted_class
+                    predicted_class.title()
                 )
 
 
@@ -483,6 +584,10 @@ if uploaded_file is not None:
     f1, f2, f3 = st.columns(3)
 
 
+    # --------------------------------------------------------
+    # COLOR INDICATOR
+    # --------------------------------------------------------
+
     with f1:
 
         with st.container(border=True):
@@ -495,10 +600,15 @@ if uploaded_file is not None:
             )
             st.info(
             f"🗑️ Recommended Bin: {color}"
+                f"Recommended Bin: {bin_info}"
             )
 
            
 
+
+    # --------------------------------------------------------
+    # RECYCLING METHOD
+    # --------------------------------------------------------
 
     with f2:
 
@@ -513,8 +623,13 @@ if uploaded_file is not None:
 
             st.success(
               f"♻️ {suggestion}"
+                recycling_method
             )
 
+
+    # --------------------------------------------------------
+    # RECYCLABILITY SCORE
+    # --------------------------------------------------------
 
     with f3:
 
