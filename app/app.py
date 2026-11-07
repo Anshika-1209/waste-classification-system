@@ -2,7 +2,12 @@ import streamlit as st
 import tensorflow as tf
 import numpy as np
 import os
+import csv
+import io
 from PIL import Image
+from features import get_waste_features
+import hashlib
+from datetime import datetime
 
 
 # ============================================================
@@ -27,7 +32,13 @@ MODEL_PATH = os.path.join(
     "waste_classifier_v2.keras"
 )
 
-model = tf.keras.models.load_model(MODEL_PATH)
+
+@st.cache_resource
+def load_model():
+    return tf.keras.models.load_model(MODEL_PATH)
+
+
+model = load_model()
 
 CLASS_NAMES = [
     "cardboard",
@@ -40,41 +51,17 @@ CLASS_NAMES = [
 
 
 # ============================================================
-# WASTE INFORMATION
+# SESSION STATE
 # ============================================================
 
-WASTE_INFO = {
-    "cardboard": {
-        "bin": "🟤 Brown",
-        "method": "Flatten cardboard and send it for paper/cardboard recycling.",
-        "score": 85
-    },
-    "glass": {
-        "bin": "🟢 Green",
-        "method": "Separate glass carefully and send it to a suitable glass recycling facility.",
-        "score": 90
-    },
-    "metal": {
-        "bin": "⚙️ Grey",
-        "method": "Separate metal items and send them to a metal recycling facility.",
-        "score": 95
-    },
-    "paper": {
-        "bin": "🔵 Blue",
-        "method": "Keep paper clean and dry and send it for paper recycling.",
-        "score": 85
-    },
-    "plastic": {
-        "bin": "🟡 Yellow",
-        "method": "Separate clean plastic and send it to a suitable recycling facility.",
-        "score": 80
-    },
-    "trash": {
-        "bin": "⚫ Black",
-        "method": "Dispose of non-recyclable waste through the appropriate general-waste system.",
-        "score": 20
-    }
-}
+if "prediction_history" not in st.session_state:
+    st.session_state.prediction_history = []
+
+if "last_prediction_hash" not in st.session_state:
+    st.session_state.last_prediction_hash = None
+
+if "user_feedback" not in st.session_state:
+    st.session_state.user_feedback = []
 
 
 # ============================================================
@@ -455,6 +442,8 @@ for col, (number, text) in zip(tip_cols, tips):
 
 if uploaded_file is not None:
 
+    prediction_success = False
+
     st.markdown(
         '<div class="section-title">🧠 AI Analysis</div>',
         unsafe_allow_html=True
@@ -465,9 +454,8 @@ if uploaded_file is not None:
         gap="large"
     )
 
-
     # --------------------------------------------------------
-    # IMAGE
+    # IMAGE PREVIEW
     # --------------------------------------------------------
 
     with image_col:
@@ -476,164 +464,341 @@ if uploaded_file is not None:
 
             st.subheader("🖼️ Image Preview")
 
-            st.image(
-                uploaded_file,
-                caption="Uploaded Waste",
-                width="stretch"
-            )
+            try:
+                uploaded_file.seek(0)
 
+                image = Image.open(uploaded_file)
+                image.verify()
+
+                uploaded_file.seek(0)
+
+                image = Image.open(uploaded_file).convert("RGB")
+
+                st.image(
+                    image,
+                    caption="Uploaded Waste",
+                    width="stretch"
+                )
+
+                # ------------------------------------------------
+                # IMAGE PREPROCESSING
+                # ------------------------------------------------
+
+                image = image.resize((224, 224))
+
+                img_array = np.array(image)
+                img_array = np.expand_dims(img_array, axis=0)
+
+                # ------------------------------------------------
+                # AI PREDICTION
+                # ------------------------------------------------
+
+                predictions = model.predict(
+                    img_array,
+                    verbose=0
+                )
+
+                predicted_index = np.argmax(predictions[0])
+
+                predicted_class = CLASS_NAMES[predicted_index]
+
+                confidence = float(
+                    predictions[0][predicted_index]
+                ) * 100
+
+                prediction_success = True
+
+                image_hash = hashlib.sha256(
+                    uploaded_file.getvalue()
+                ).hexdigest()
+
+                if st.session_state.last_prediction_hash != image_hash:
+
+                    st.session_state.prediction_history.append({
+                        "Image": uploaded_file.name,
+                        "Category": predicted_class.title(),
+                        "Confidence": f"{confidence:.2f}%",
+                        "Date & Time": datetime.now().strftime(
+                            "%d-%m-%Y %H:%M:%S"
+                        )
+                    })
+
+                    st.session_state.last_prediction_hash = image_hash
+
+            except Exception:
+
+                prediction_success = False
+
+                st.error(
+                    "⚠️ Invalid or corrupted image. "
+                    "Please upload another image."
+                )
 
     # --------------------------------------------------------
-    # REAL AI PREDICTION
+    # RESULTS
     # --------------------------------------------------------
 
-    image = Image.open(uploaded_file).convert("RGB")
-    image = image.resize((224, 224))
+    if prediction_success:
 
-    img_array = np.array(image)
-    img_array = np.expand_dims(img_array, axis=0)
+        # ----------------------------------------------------
+        # FEATURES INTEGRATION
+        # ----------------------------------------------------
 
-    predictions = model.predict(
-        img_array,
-        verbose=0
-    )
+        waste_info = get_waste_features(predicted_class)
 
-    predicted_index = np.argmax(predictions[0])
+        recyclability = waste_info["score"]
 
-    predicted_class = CLASS_NAMES[predicted_index]
+        bin_color = waste_info["color"]
 
-    confidence = float(
-        predictions[0][predicted_index]
-    ) * 100
+        recycling_method = waste_info["suggestion"]
 
-    waste_info = WASTE_INFO[predicted_class]
+        color_emojis = {
+            "Brown": "🟤",
+            "Blue": "🔵",
+            "Green": "🟢",
+            "Yellow": "🟡",
+            "Black": "⚫"
+        }
 
-    recyclability = waste_info["score"]
+        bin_info = f"{color_emojis.get(bin_color, '⚪')} {bin_color}"
 
-    bin_info = waste_info["bin"]
+        # ----------------------------------------------------
+        # CLASSIFICATION RESULT
+        # ----------------------------------------------------
 
-    recycling_method = waste_info["method"]
+        with result_col:
 
+            with st.container(border=True):
 
-    # --------------------------------------------------------
-    # RESULT
-    # --------------------------------------------------------
+                st.subheader("🎯 Classification Result")
 
-    with result_col:
+                st.markdown(
+                    f"## ♻️ {predicted_class.title()}"
+                )
 
-        with st.container(border=True):
+                st.caption("Predicted Waste Category")
 
-            st.subheader("🎯 Classification Result")
+                st.write("**Model Confidence**")
 
-            st.markdown(
-                f"## ♻️ {predicted_class.title()}"
-            )
+                st.progress(
+                    confidence / 100
+                )
 
-            st.caption("Predicted Waste Category")
+                st.caption(
+                    f"{confidence:.2f}% confidence"
+                )
 
-            st.write("**Model Confidence**")
+                st.divider()
 
-            st.progress(
-                confidence / 100
-            )
+                r1, r2 = st.columns(2)
 
-            st.caption(
-                f"{confidence:.2f}% confidence"
-            )
+                with r1:
 
-            st.divider()
+                    st.metric(
+                        "♻️ Recyclability",
+                        f"{recyclability}%"
+                    )
 
-            r1, r2 = st.columns(2)
+                with r2:
 
-            with r1:
+                    st.metric(
+                        "🗂️ Category",
+                        predicted_class.title()
+                    )
+
+        # ====================================================
+        # SMART INSIGHTS
+        # ====================================================
+
+        st.markdown(
+            '<div class="section-title">🌱 Smart Waste Insights</div>',
+            unsafe_allow_html=True
+        )
+
+        f1, f2, f3 = st.columns(3)
+
+        # ----------------------------------------------------
+        # COLOR INDICATOR
+        # ----------------------------------------------------
+
+        with f1:
+
+            with st.container(border=True):
+
+                st.markdown(
+                    f"### {bin_info.split(' ')[0]} Color Indicator"
+                )
+
+                st.write(
+                    "Recommended waste-bin indicator "
+                    "for the predicted category."
+                )
+
+                st.info(
+                    f"Recommended Bin: {bin_info}"
+                )
+
+        # ----------------------------------------------------
+        # RECYCLING METHOD
+        # ----------------------------------------------------
+
+        with f2:
+
+            with st.container(border=True):
+
+                st.subheader("♻️ Recycling Method")
+
+                st.write(
+                    "Suggested handling method for "
+                    "the identified waste."
+                )
+
+                st.success(
+                    recycling_method
+                )
+
+        # ----------------------------------------------------
+        # RECYCLABILITY SCORE
+        # ----------------------------------------------------
+
+        with f3:
+
+            with st.container(border=True):
+
+                st.subheader("📊 Recyclability Score")
 
                 st.metric(
-                    "♻️ Recyclability",
+                    "Score",
                     f"{recyclability}%"
                 )
 
-            with r2:
+                st.progress(
+                    recyclability / 100
+                )
 
-                st.metric(
-                    "🗂️ Category",
-                    predicted_class.title()
+                st.caption(
+                    "Estimated recycling suitability"
                 )
 
 
-    # ========================================================
-    # SMART INSIGHTS
-    # ========================================================
+# ============================================================
+# PREDICTION HISTORY
+# ============================================================
+
+st.markdown(
+    '<div class="section-title">📜 Prediction History</div>',
+    unsafe_allow_html=True
+)
+
+with st.container(border=True):
+
+    st.subheader("Previously Analyzed Images")
+
+    if st.session_state.prediction_history:
+
+        st.dataframe(
+            st.session_state.prediction_history,
+            use_container_width=True,
+            hide_index=True
+        )
+
+        # Download Prediction History Report
+
+        csv_buffer = io.StringIO()
+
+        writer = csv.DictWriter(
+            csv_buffer,
+            fieldnames=[
+                "Image",
+                "Category",
+                "Confidence",
+                "Date & Time"
+            ]
+        )
+
+        writer.writeheader()
+        writer.writerows(st.session_state.prediction_history)
+
+        st.download_button(
+            label="📥 Download Prediction Report",
+            data=csv_buffer.getvalue(),
+            file_name="EcoSort_Prediction_Report.csv",
+            mime="text/csv",
+            use_container_width=True
+        )
+
+        if st.button("🗑️ Clear History"):
+
+            st.session_state.prediction_history = []
+            st.session_state.last_prediction_hash = None
+
+            st.success("Prediction history cleared!")
+
+            st.rerun()
+
+    else:
+
+        st.info(
+            "No prediction history available. "
+            "Analyze an image to get started!"
+        )
+
+
+# ============================================================
+# USER FEEDBACK
+# ============================================================
+
+if st.session_state.prediction_history:
+
+    latest_prediction = st.session_state.prediction_history[-1]
 
     st.markdown(
-        '<div class="section-title">🌱 Smart Waste Insights</div>',
+        '<div class="section-title">💬 User Feedback</div>',
         unsafe_allow_html=True
     )
 
-    f1, f2, f3 = st.columns(3)
+    with st.container(border=True):
 
+        st.subheader("How was your prediction experience?")
 
-    # --------------------------------------------------------
-    # COLOR INDICATOR
-    # --------------------------------------------------------
+        st.write(
+            "Your feedback helps us improve EcoSort's "
+            "waste classification experience."
+        )
 
-    with f1:
+        with st.form("feedback_form", clear_on_submit=True):
 
-        with st.container(border=True):
-
-            st.markdown(f"### {bin_info.split(' ')[0]} Color Indicator")
-
-            st.write(
-                "Recommended waste-bin indicator "
-                "for the predicted category."
+            rating = st.radio(
+                "Was this prediction helpful?",
+                ["👍 Positive", "👎 Negative"],
+                horizontal=True
             )
 
-            st.info(
-                f"Recommended Bin: {bin_info}"
+            feedback_text = st.text_area(
+                "Share your experience (Optional)",
+                placeholder="Tell us what you think about EcoSort..."
             )
 
-
-    # --------------------------------------------------------
-    # RECYCLING METHOD
-    # --------------------------------------------------------
-
-    with f2:
-
-        with st.container(border=True):
-
-            st.subheader("♻️ Recycling Method")
-
-            st.write(
-                "Suggested handling method for "
-                "the identified waste."
+            submit_feedback = st.form_submit_button(
+                "📩 Submit Feedback",
+                use_container_width=True
             )
 
-            st.success(
-                recycling_method
-            )
+            if submit_feedback:
 
+                st.session_state.user_feedback.append({
+                    "Image": latest_prediction["Image"],
+                    "Category": latest_prediction["Category"],
+                    "Rating": rating,
+                    "Feedback": feedback_text,
+                    "Date & Time": datetime.now().strftime(
+                        "%d-%m-%Y %H:%M:%S"
+                    )
+                })
 
-    # --------------------------------------------------------
-    # RECYCLABILITY SCORE
-    # --------------------------------------------------------
-
-    with f3:
-
-        with st.container(border=True):
-
-            st.subheader("📊 Recyclability Score")
-
-            st.metric(
-                "Score",
-                f"{recyclability}%"
-            )
-
-            st.progress(
-                recyclability / 100
-            )
-
-            st.caption(
-                "Estimated recycling suitability"
-            )
+                st.success(
+                    "Thank you! Your feedback has been submitted successfully. 💚"
+                )
 
 
 # ============================================================
