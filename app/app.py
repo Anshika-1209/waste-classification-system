@@ -1,5 +1,9 @@
 import streamlit as st
 from features import get_waste_features
+import tensorflow as tf
+import numpy as np
+import os
+from PIL import Image
 import joblib
 import pandas as pd
 from pathlib import Path
@@ -15,23 +19,10 @@ st.set_page_config(
     layout="wide",
     initial_sidebar_state="collapsed"
 )
-# Load trained regression model
-@st.cache_resource
-def load_regression_model():
-    model_path = (
-        Path(__file__).resolve().parent.parent
-        / "regression_outputs"
-        / "recyclability_model.pkl"
-    )
-    return joblib.load(model_path)
-
-regression_model = load_regression_model()
 
 
 # ============================================================
 # CUSTOM CSS
-# CSS ONLY — NO HTML UI COMPONENTS
-# NEW THEME: Deep indigo / cyan "night-tech" look
 # ============================================================
 
 st.markdown("""
@@ -351,7 +342,7 @@ with c4:
 
 
 # ============================================================
-# UPLOAD — now centered on the page
+# UPLOAD
 # ============================================================
 
 st.markdown(
@@ -378,7 +369,9 @@ with upload_col:
         )
 
 
-# Tips now sit below the centered uploader, as a row of cards
+# ============================================================
+# TIPS
+# ============================================================
 
 tip_cols = st.columns(5)
 
@@ -391,8 +384,11 @@ tips = [
 ]
 
 for col, (number, text) in zip(tip_cols, tips):
+
     with col:
+
         with st.container(border=True):
+
             st.markdown(f"**{number}**")
             st.caption(text)
 
@@ -427,8 +423,40 @@ if uploaded_file is not None:
             st.image(
                 uploaded_file,
                 caption="Uploaded Waste",
-                use_container_width=True
+                width="stretch"
             )
+
+
+    # --------------------------------------------------------
+    # REAL AI PREDICTION
+    # --------------------------------------------------------
+
+    image = Image.open(uploaded_file).convert("RGB")
+    image = image.resize((224, 224))
+
+    img_array = np.array(image)
+    img_array = np.expand_dims(img_array, axis=0)
+
+    predictions = model.predict(
+        img_array,
+        verbose=0
+    )
+
+    predicted_index = np.argmax(predictions[0])
+
+    predicted_class = CLASS_NAMES[predicted_index]
+
+    confidence = float(
+        predictions[0][predicted_index]
+    ) * 100
+
+    waste_info = WASTE_INFO[predicted_class]
+
+    recyclability = waste_info["score"]
+
+    bin_info = waste_info["bin"]
+
+    recycling_method = waste_info["method"]
 
 
     # --------------------------------------------------------
@@ -464,7 +492,7 @@ if uploaded_file is not None:
             )
 
             st.markdown(
-                f"## ♻️ {predicted_class}"
+                f"## ♻️ {predicted_class.title()}"
             )
 
             st.caption("Predicted Waste Category")
@@ -476,7 +504,7 @@ if uploaded_file is not None:
             )
 
             st.caption(
-                f"{confidence}% confidence"
+                f"{confidence:.2f}% confidence"
             )
 
             st.divider()
@@ -484,15 +512,17 @@ if uploaded_file is not None:
             r1, r2 = st.columns(2)
 
             with r1:
+
                 st.metric(
                     "♻️ Recyclability",
                     f"{recyclability}%"
                 )
 
             with r2:
+
                 st.metric(
                     "🗂️ Category",
-                    predicted_class
+                    predicted_class.title()
                 )
 
 
@@ -508,6 +538,10 @@ if uploaded_file is not None:
     f1, f2, f3 = st.columns(3)
 
 
+    # --------------------------------------------------------
+    # COLOR INDICATOR
+    # --------------------------------------------------------
+
     with f1:
 
         with st.container(border=True):
@@ -520,10 +554,15 @@ if uploaded_file is not None:
             )
             st.info(
             f"🗑️ Recommended Bin: {color}"
+                f"Recommended Bin: {bin_info}"
             )
 
            
 
+
+    # --------------------------------------------------------
+    # RECYCLING METHOD
+    # --------------------------------------------------------
 
     with f2:
 
@@ -540,6 +579,10 @@ if uploaded_file is not None:
               f"♻️ {suggestion}"
             )
 
+
+    # --------------------------------------------------------
+    # RECYCLABILITY SCORE
+    # --------------------------------------------------------
 
     with f3:
 
