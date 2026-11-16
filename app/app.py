@@ -1,5 +1,8 @@
 import streamlit as st
 from features import get_waste_features
+import joblib
+import pandas as pd
+from pathlib import Path
 
 
 # ============================================================
@@ -12,6 +15,17 @@ st.set_page_config(
     layout="wide",
     initial_sidebar_state="collapsed"
 )
+# Load trained regression model
+@st.cache_resource
+def load_regression_model():
+    model_path = (
+        Path(__file__).resolve().parent.parent
+        / "regression_outputs"
+        / "recyclability_model.pkl"
+    )
+    return joblib.load(model_path)
+
+regression_model = load_regression_model()
 
 
 # ============================================================
@@ -426,17 +440,28 @@ if uploaded_file is not None:
         with st.container(border=True):
 
             st.subheader("🎯 Classification Result")
-
-            # TEMPORARY DEMO VALUES
+                        # TEMPORARY DEMO VALUES
             predicted_class = "Plastic"
             confidence = 94
 
-           # Get features based on predicted waste category
             features = get_waste_features(predicted_class)
 
             color = features["color"]
             suggestion = features["suggestion"]
-            recyclability = features["score"]
+
+            # Prepare category input for regression model
+            input_data = pd.DataFrame(
+                0,
+                index=[0],
+                columns=regression_model.feature_names_in_
+            )
+
+            input_data.loc[0, predicted_class.lower()] = 1
+
+            # Predict recyclability score
+            recyclability = float(
+                regression_model.predict(input_data)[0]
+            )
 
             st.markdown(
                 f"## ♻️ {predicted_class}"
@@ -524,7 +549,7 @@ if uploaded_file is not None:
 
             st.metric(
                 "Score",
-                f"{recyclability}%"
+                f"{recyclability:.2f}%"
             )
 
             st.progress(
