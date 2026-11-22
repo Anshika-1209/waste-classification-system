@@ -606,6 +606,30 @@ if uploaded_file is not None:
                         predicted_class.title()
                     )
 
+        # ----------------------------------------------------
+        # CLASSIFICATION CONFIDENCE GRAPH
+        # ----------------------------------------------------
+
+        with result_col:
+
+            with st.container(border=True):
+
+                st.subheader("📊 Classification Confidence")
+
+                confidence_chart_data = {
+                    "Category": [name.title() for name in CLASS_NAMES],
+                    "Confidence (%)": [
+                        round(float(score) * 100, 2)
+                        for score in predictions[0]
+                    ]
+                }
+
+                st.bar_chart(
+                    confidence_chart_data,
+                    x="Category",
+                    y="Confidence (%)"
+                )
+
         # ====================================================
         # SMART INSIGHTS
         # ====================================================
